@@ -10,17 +10,46 @@ from einops import repeat
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Dataset
 from torchvision.utils import make_grid
+from sklearn.model_selection import StratifiedKFold
 
 class CustomGraphDataset(Dataset):
-    def __init__(self, data_list):
+    def __init__(self, data_list, k_fold=None):
+        super().__init__()
         self.data_list = data_list
+        self.k_fold = k_fold
+        self.current_fold = None
+        self.train_mode = True
+        
+        # If k_fold is specified, prepare the folds
+        if self.k_fold and self.k_fold > 1:
+            labels = [label for _, label in data_list]
+            self.splitter = StratifiedKFold(n_splits=k_fold, shuffle=True, random_state=0)
+            self.folds = list(self.splitter.split(range(len(data_list)), labels))
+        else:
+            self.k_fold = None
+            self.folds = [list(range(len(data_list)))]
+
+        self.num_nodes = self.data_list[0][0].shape[1]  # Assuming the first element of tuple is the graph data
+        self.num_classes = len(set([label for _, label in data_list]))
+
+    def set_fold(self, fold, train=True):
+        self.current_fold = fold
+        self.train_mode = train
 
     def __len__(self):
+        if self.k_fold:
+            train_idx, test_idx = self.folds[self.current_fold]
+            return len(train_idx) if self.train_mode else len(test_idx)
         return len(self.data_list)
 
     def __getitem__(self, idx):
-        return self.data_list[idx]
+        if self.k_fold:
+            train_idx, test_idx = self.folds[self.current_fold]
+            actual_idx = train_idx[idx] if self.train_mode else test_idx[idx]
+        else:
+            actual_idx = idx
 
+        return self.data_list[actual_idx]
 
 def load_dataset(dataset_dir, dataset_name):
     """
