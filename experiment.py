@@ -8,7 +8,19 @@ from dataset import *
 from tqdm import tqdm
 from einops import repeat
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import Dataset
 from torchvision.utils import make_grid
+
+class CustomGraphDataset(Dataset):
+    def __init__(self, data_list):
+        self.data_list = data_list
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, idx):
+        return self.data_list[idx]
+
 
 def load_dataset(dataset_dir, dataset_name):
     """
@@ -92,7 +104,7 @@ def train(argv):
 
     # define dataset
     data_list = load_dataset(argv.sourcedir, argv.dataset_name)
-    dataset = torch.utils.data.TensorDataset(data_list)
+    dataset = CustomGraphDataset(data_list)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=argv.minibatch_size, shuffle=False, num_workers=argv.num_workers, pin_memory=True)
 
     # resume checkpoint if file exists
@@ -258,8 +270,8 @@ def test(argv):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # define dataset
-    data_list = load_dataset(argv.sourcedir)
-    dataset = torch.utils.data.TensorDataset(data_list)
+    data_list = load_dataset(argv.sourcedir, argv.dataset_name)
+    dataset = CustomGraphDataset(data_list)
 
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=argv.num_workers, pin_memory=True)
     logger = util.logger.LoggerSTAGIN(dataset.folds, dataset.num_classes)
