@@ -118,11 +118,13 @@ def train(argv):
         # set dataloader
         dataset.set_fold(k, train=True)
 
+        num_nodes = len(data_list[0][0]['nodes'])
+
         # define model
         model = ModelSTAGIN(
-            input_dim=dataset.num_nodes,
+            input_dim=num_nodes,
             hidden_dim=argv.hidden_dim,
-            num_classes=dataset.num_classes,
+            num_classes=2,
             num_heads=argv.num_heads,
             num_layers=argv.num_layers,
             sparsity=argv.sparsity,
