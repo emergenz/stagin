@@ -10,6 +10,48 @@ from einops import repeat
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.utils import make_grid
 
+def load_dataset(dataset_dir, dataset_name):
+    """
+    Load the new dataset format and return a list of dynamic graph data and labels.
+    """
+    adjacency_path = os.path.join(dataset_dir, f"{dataset_name}_A.txt")
+    graph_indicator_path = os.path.join(dataset_dir, f"{dataset_name}_graph_indicator.txt")
+    graph_labels_path = os.path.join(dataset_dir, f"{dataset_name}_graph_labels.txt")
+    node_labels_path = os.path.join(dataset_dir, f"{dataset_name}_node_labels.txt")
+    edge_attributes_path = os.path.join(dataset_dir, f"{dataset_name}_edge_attributes.txt")
+    
+    with open(graph_labels_path, 'r') as f:
+        graph_labels = [int(line.strip()) for line in f.readlines()]
+    
+    with open(graph_indicator_path, 'r') as f:
+        graph_indicators = [int(line.strip()) for line in f.readlines()]
+    
+    with open(adjacency_path, 'r') as f:
+        edges = [tuple(map(int, line.strip().split(","))) for line in f.readlines()]
+    
+    with open(edge_attributes_path, 'r') as f:
+        edge_attributes = [int(line.strip()) for line in f.readlines()]
+    
+    with open(node_labels_path, 'r') as f:
+        node_labels = [list(map(int, line.strip().split(","))) for line in f.readlines()]
+    
+    data_list = []
+    for idx, label in enumerate(graph_labels):
+        graph_nodes = [i for i, indicator in enumerate(graph_indicators) if indicator == idx + 1]
+        graph_node_labels = [node_labels[i] for i in graph_nodes]
+        graph_edges = [(src, tgt) for src, tgt in edges if src in graph_nodes or tgt in graph_nodes]
+        graph_edge_attributes = [edge_attributes[i] for i, (src, tgt) in enumerate(edges) if src in graph_nodes or tgt in graph_nodes]
+        
+        graph_data = {
+            'nodes': graph_nodes,
+            'node_labels': graph_node_labels,
+            'edges': graph_edges,
+            'edge_attributes': graph_edge_attributes
+        }
+        data_list.append((graph_data, label))
+    
+    return data_list
+
 
 def step(model, criterion, dyn_v, dyn_a, sampling_endpoints, t, label, reg_lambda, clip_grad=0.0, device='cpu', optimizer=None, scheduler=None):
     if optimizer is None: model.eval()
@@ -49,13 +91,8 @@ def train(argv):
         device = torch.device("cpu")
 
     # define dataset
-    if argv.dataset=='hcp-rest': dataset = DatasetHCPRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples)
-    elif argv.dataset=='hcp-task': dataset = DatasetHCPTask(argv.sourcedir, roi=argv.roi, dynamic_length=argv.dynamic_length, k_fold=argv.k_fold)
-    elif argv.dataset=='ukb-rest': dataset = DatasetUKBRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples)
-    elif argv.dataset=='ucla-rest': dataset = DatasetFMRIPREP(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, dynamic_length=argv.dynamic_length, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples, prefix='ucla')
-    elif argv.dataset=='cobre-rest': dataset = DatasetFMRIPREP(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, dynamic_length=argv.dynamic_length, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples, prefix='cobre')
-    elif argv.dataset=='abide-rest': dataset = DatasetABIDE(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, dynamic_length=argv.dynamic_length, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm)
-    else: raise
+    data_list = load_dataset(argv.sourcedir, argv.dataset_name)
+    dataset = torch.utils.data.TensorDataset(data_list)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=argv.minibatch_size, shuffle=False, num_workers=argv.num_workers, pin_memory=True)
 
     # resume checkpoint if file exists
@@ -219,14 +256,9 @@ def test(argv):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # define dataset
-    if argv.dataset=='hcp-rest': dataset = DatasetHCPRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples)
-    elif argv.dataset=='hcp-task': dataset = DatasetHCPTask(argv.sourcedir, roi=argv.roi, dynamic_length=argv.dynamic_length, k_fold=argv.k_fold)
-    elif argv.dataset=='ukb-rest': dataset = DatasetUKBRest(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples)
-    elif argv.dataset=='ucla-rest': dataset = DatasetFMRIPREP(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples, prefix='ucla')
-    elif argv.dataset=='cobre-rest': dataset = DatasetFMRIPREP(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm, regression=argv.regression, num_samples=argv.num_samples, prefix='cobre')    
-    elif argv.dataset=='abide-rest': dataset = DatasetABIDE(argv.sourcedir, roi=argv.roi, k_fold=argv.k_fold, target_feature=argv.target_feature, smoothing_fwhm=argv.fwhm)
+    data_list = load_dataset(argv.sourcedir)
+    dataset = torch.utils.data.TensorDataset(data_list)
 
-    else: raise
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=argv.num_workers, pin_memory=True)
     logger = util.logger.LoggerSTAGIN(dataset.folds, dataset.num_classes)
 

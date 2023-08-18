@@ -6,7 +6,6 @@ import pandas as pd
 from glob import glob
 from tqdm import tqdm
 from random import shuffle, randrange, choices
-from nilearn import image, maskers, datasets
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import StratifiedKFold
 
